@@ -20,8 +20,17 @@ from ... import log as logging
 from ...compat import is_win, is_darwin, is_linux
 from ...utils import misc
 
+
+QLIBRARYINFO_PATH = """
+    from {0}.QtCore import QLibraryInfo
+    path = QLibraryInfo.location(QLibraryInfo.LibrariesPath{1})
+    print(path)
+"""
+
 logger = logging.getLogger(__name__)
-Qt_Libraries = ('PyQt5', 'PySide2', 'PySide6')
+Qt_Libraries = {
+    'PyQt5': None, 'PySide2': None, 'PySide6': None,
+}
 
 
 # Qt5LibraryInfo
@@ -100,10 +109,14 @@ class Qt5LibraryInfo:
             return getattr(self, name)
 
 
+def setup_qtwrapper(qt_wrapper_name):
+    Qt_Libraries[qt_wrapper_name] = Qt5LibraryInfo(qt_wrapper_name)
+    return Qt_Libraries[qt_wrapper_name]
+
 # Provide single instances of this class to avoid each hook constructing its own.
-pyqt5_library_info = Qt5LibraryInfo('PyQt5')
-pyside2_library_info = Qt5LibraryInfo('PySide2')
-pyside6_library_info = Qt5LibraryInfo('PySide6')
+pyqt5_library_info = setup_qtwrapper('PyQt5')
+pyside2_library_info = setup_qtwrapper('PySide2')
+pyside6_library_info = setup_qtwrapper('PySide6')
 
 
 def qt_plugins_dir(namespace):
@@ -116,12 +129,8 @@ def qt_plugins_dir(namespace):
     """
     if namespace not in Qt_Libraries:
         raise Exception('Invalid namespace: {0}'.format(namespace))
-    if namespace == 'PyQt5':
-        paths = [pyqt5_library_info.location['PluginsPath']]
-    elif namespace == 'PySide2':
-        paths = [pyside2_library_info.location['PluginsPath']]
-    elif namespace == 'PySide6':
-        paths = [pyside6_library_info.location['PluginsPath']]
+    if namespace in Qt_Libraries:
+        paths = [Qt_Libraries[namespace].location['PluginsPath']]
     else:
         paths = eval_statement("""
             from {0}.QtCore import QCoreApplication;
@@ -193,11 +202,7 @@ def qt_menu_nib_dir(namespace):
         raise Exception('Invalid namespace: {0}'.format(namespace))
     menu_dir = None
 
-    path = exec_statement("""
-    from {0}.QtCore import QLibraryInfo
-    path = QLibraryInfo.location(QLibraryInfo.LibrariesPath)
-    print(path)
-    """.format(namespace))
+    path = exec_statement(QLIBRARYINFO_PATH.format(namespace, '()' if namespace == 'PySide6' else ''))
     anaconda_path = os.path.join(sys.exec_prefix, "python.app", "Contents",
                                  "Resources")
     paths = [os.path.join(path, 'Resources'),
